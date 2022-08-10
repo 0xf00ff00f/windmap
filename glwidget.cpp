@@ -129,8 +129,10 @@ void GLWidget::initBuffer()
     constexpr auto kRings = 20;
     constexpr auto kSlices = 20;
 
-    for (int i = 0; i < kRings; ++i) {
-        for (int j = 0; j < kSlices; ++j) {
+    for (int i = 0; i < kRings; ++i)
+    {
+        for (int j = 0; j < kSlices; ++j)
+        {
             auto vertex = [](int i, int j) -> Vertex {
                 const auto phi = i * M_PI / kRings - M_PI_2;
                 const auto theta = j * 2.0f * M_PI / kSlices;
@@ -144,7 +146,7 @@ void GLWidget::initBuffer()
                 const auto v = static_cast<float>(j) / kSlices;
                 const auto texCoord = QVector2D(v, u);
 
-                return { position, texCoord };
+                return {position, texCoord};
             };
 
             const auto v0 = vertex(i, j);

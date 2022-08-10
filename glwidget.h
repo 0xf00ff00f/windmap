@@ -36,7 +36,8 @@ private:
     QMatrix4x4 m_model;
     QMatrix4x4 m_projection;
     int m_mvpUniform = -1;
-    struct Vertex {
+    struct Vertex
+    {
         QVector3D position;
         QVector2D texCoord;
     };
