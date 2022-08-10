@@ -8,6 +8,7 @@
 
 class Camera;
 class QOpenGLShaderProgram;
+class QOpenGLTexture;
 
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
@@ -30,11 +31,16 @@ private:
     QOpenGLShaderProgram *m_program = nullptr;
     QOpenGLVertexArrayObject m_vaoEarth;
     QOpenGLBuffer m_vboEarth;
+    QOpenGLTexture *m_earthTexture = nullptr;
     Camera *m_camera;
     QMatrix4x4 m_model;
     QMatrix4x4 m_projection;
     int m_mvpUniform = -1;
-    std::vector<QVector3D> m_earthVertices;
+    struct Vertex {
+        QVector3D position;
+        QVector2D texCoord;
+    };
+    std::vector<Vertex> m_earthVertices;
     QPoint m_lastMousePos;
     enum class CameraCommand
     {

@@ -3,6 +3,7 @@
 #include "camera.h"
 
 #include <QOpenGLShaderProgram>
+#include <QOpenGLTexture>
 #include <QMouseEvent>
 
 #include <cmath>
@@ -21,6 +22,7 @@ GLWidget::GLWidget(QWidget *parent)
 GLWidget::~GLWidget()
 {
     makeCurrent();
+    delete m_earthTexture;
     m_vboEarth.destroy();
     m_vaoEarth.destroy();
     delete m_program;
@@ -32,20 +34,18 @@ void GLWidget::paintGL()
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    glDepthMask(GL_FALSE); // don't write to the depth buffer
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
 
     QMatrix4x4 mvp = m_projection * m_camera->viewMatrix() * m_model;
 
+    m_earthTexture->bind();
     m_program->bind();
     m_program->setUniformValue(m_mvpUniform, mvp);
 
     {
         QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoEarth);
-        glDrawArrays(GL_LINES, 0, m_earthVertices.size());
+        glDrawArrays(GL_TRIANGLES, 0, m_earthVertices.size());
     }
 }
 
@@ -121,21 +121,30 @@ void GLWidget::initProgram()
 
 void GLWidget::initBuffer()
 {
+    // texture
+    m_earthTexture = new QOpenGLTexture(QImage(":/earth.png").mirrored());
+
     // sphere mesh
 
-    constexpr auto kRings = 8;
-    constexpr auto kSlices = 8;
+    constexpr auto kRings = 20;
+    constexpr auto kSlices = 20;
 
     for (int i = 0; i < kRings; ++i) {
         for (int j = 0; j < kSlices; ++j) {
-            auto vertex = [](int i, int j) {
-                const auto phi = i * M_PI / (kRings - 1) - M_PI_2;
+            auto vertex = [](int i, int j) -> Vertex {
+                const auto phi = i * M_PI / kRings - M_PI_2;
                 const auto theta = j * 2.0f * M_PI / kSlices;
                 const auto r = std::cos(phi);
                 const auto x = r * std::cos(theta);
                 const auto y = r * std::sin(theta);
                 const auto z = std::sin(phi);
-                return QVector3D(x, y, z);
+                const auto position = QVector3D(x, y, z);
+
+                const auto u = static_cast<float>(i) / kRings;
+                const auto v = static_cast<float>(j) / kSlices;
+                const auto texCoord = QVector2D(v, u);
+
+                return { position, texCoord };
             };
 
             const auto v0 = vertex(i, j);
@@ -158,10 +167,12 @@ void GLWidget::initBuffer()
 
     m_vboEarth.create();
     m_vboEarth.bind();
-    m_vboEarth.allocate(m_earthVertices.data(), m_earthVertices.size() * sizeof(QVector3D));
+    m_vboEarth.allocate(m_earthVertices.data(), m_earthVertices.size() * sizeof(Vertex));
 
     m_program->enableAttributeArray(0); // position
-    m_program->setAttributeBuffer(0, GL_FLOAT, 0, 3, sizeof(QVector3D));
+    m_program->enableAttributeArray(1); // texCoord
+    m_program->setAttributeBuffer(0, GL_FLOAT, offsetof(Vertex, position), 3, sizeof(Vertex));
+    m_program->setAttributeBuffer(1, GL_FLOAT, offsetof(Vertex, texCoord), 2, sizeof(Vertex));
     m_vboEarth.release();
 }
 

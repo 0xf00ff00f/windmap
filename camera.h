@@ -38,7 +38,7 @@ private:
     QVector3D localToWorld(const QVector3D &v) const;
     void updateViewMatrix();
 
-    QVector3D m_position = QVector3D(0, 0, 4);
+    QVector3D m_position = QVector3D(0, 0, 3);
     QVector3D m_upVector = QVector3D(0, 1, 0);
     QVector3D m_viewCenter = QVector3D(0, 0, 0);
     QMatrix4x4 m_viewMatrix;
