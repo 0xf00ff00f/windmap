@@ -1,0 +1,7 @@
+<RCC>
+    <qresource prefix="/">
+        <file>earth.png</file>
+        <file>earth.vert</file>
+        <file>earth.frag</file>
+    </qresource>
+</RCC>
