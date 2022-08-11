@@ -33,7 +33,8 @@ QVector2D cartesianToLatLon(const QVector3D &position)
 }
 
 constexpr auto ParticleCount = 20000;
-constexpr auto MaxParticleVertices = ParticleCount * Particle::MaxHistorySize * 2;
+constexpr auto MaxParticleVertices = ParticleCount * Particle::MaxHistorySize;
+constexpr auto MaxParticleIndices = ParticleCount * 2 * (Particle::MaxHistorySize - 1);
 }
 
 void Particle::reset()
@@ -49,6 +50,7 @@ void Particle::reset()
 
 GLWidget::GLWidget(QWidget *parent)
     : QOpenGLWidget(parent)
+    , m_vboParticleIndices(QOpenGLBuffer::IndexBuffer)
     , m_camera(new Camera(this))
     , m_timer(new QTimer(this))
     , m_windImage(":/wind.png")
@@ -76,7 +78,8 @@ GLWidget::~GLWidget()
     m_vaoEarth.destroy();
     delete m_programEarth;
 
-    m_vboParticles.destroy();
+    m_vboParticleVerts.destroy();
+    m_vboParticleIndices.destroy();
     m_vaoParticles.destroy();
     delete m_programParticles;
     doneCurrent();
@@ -114,38 +117,40 @@ void GLWidget::paintGL()
     m_programParticles->bind();
     m_programParticles->setUniformValue(m_mvpUniformParticles, mvp);
 
-    m_vboParticles.bind();
+    m_vboParticleVerts.bind();
     auto *particleVertices = reinterpret_cast<ParticleVertex *>(
-        m_vboParticles.mapRange(0, MaxParticleVertices * sizeof(ParticleVertex), QOpenGLBuffer::RangeWrite));
+        m_vboParticleVerts.mapRange(0, MaxParticleVertices * sizeof(ParticleVertex), QOpenGLBuffer::RangeWrite));
     Q_ASSERT(particleVertices);
     int vertexCount = 0;
 
     for (const auto &particle : m_particles)
     {
-        if (particle.historySize < 2)
-            continue;
-        int head = (particle.historySize + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
-        for (int i = 0, count = std::min(particle.historySize, Particle::MaxHistorySize); i < count - 1; ++i)
+        int historySize = std::min(particle.historySize, Particle::MaxHistorySize);
+        int head = particle.historySize % Particle::MaxHistorySize;
+        for (int i = 0; i < historySize; ++i)
         {
-            const auto alpha = 1.0f - static_cast<float>(i) / (count - 1);
-            int prev = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
-            auto addVertex = [particleVertices, &vertexCount, alpha](const auto &p) {
-                const auto position = 1.01f * latLonToCartesian(p.x(), p.y());
-                const auto color = QVector4D(1, 0, 0, alpha);
-                particleVertices[vertexCount++] = ParticleVertex{position, color};
-                Q_ASSERT(vertexCount < MaxParticleVertices);
-            };
-            addVertex(particle.history[head]);
-            addVertex(particle.history[prev]);
-            head = prev;
+            head = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
+            const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
+            const auto &p = particle.history[head];
+            const auto position = 1.01f * latLonToCartesian(p.x(), p.y());
+            const auto color = QVector4D(1, 0, 0, alpha);
+            particleVertices[vertexCount++] = ParticleVertex{position, color};
+        }
+        for (int i = historySize; i < Particle::MaxHistorySize; ++i)
+        {
+            const auto &p = particle.history[head];
+            const auto position = 1.01f * latLonToCartesian(p.x(), p.y());
+            const auto color = QVector4D(1, 0, 0, 0);
+            particleVertices[vertexCount++] = ParticleVertex{position, color};
         }
     }
+    Q_ASSERT(vertexCount == MaxParticleVertices);
 
-    m_vboParticles.unmap();
-    m_vboParticles.release();
+    m_vboParticleVerts.unmap();
+    m_vboParticleVerts.release();
     {
         QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoParticles);
-        glDrawArrays(GL_LINES, 0, vertexCount);
+        glDrawElements(GL_LINES, MaxParticleIndices, GL_UNSIGNED_INT, nullptr);
     }
 
     glDisable(GL_BLEND);
@@ -280,7 +285,7 @@ void GLWidget::initBuffers()
 
     {
         m_vaoEarth.create();
-        QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoEarth);
+        m_vaoEarth.bind();
 
         m_vboEarth.create();
         m_vboEarth.bind();
@@ -291,16 +296,34 @@ void GLWidget::initBuffers()
         m_programEarth->setAttributeBuffer(0, GL_FLOAT, offsetof(Vertex, position), 3, sizeof(Vertex));
         m_programEarth->setAttributeBuffer(1, GL_FLOAT, offsetof(Vertex, texCoord), 2, sizeof(Vertex));
 
+        m_vaoEarth.release();
         m_vboEarth.release();
     }
 
     {
         m_vaoParticles.create();
-        QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoParticles);
+        m_vaoParticles.bind();
 
-        m_vboParticles.create();
-        m_vboParticles.bind();
-        m_vboParticles.allocate(MaxParticleVertices * sizeof(ParticleVertex));
+        m_vboParticleVerts.create();
+        m_vboParticleVerts.bind();
+        m_vboParticleVerts.allocate(MaxParticleVertices * sizeof(ParticleVertex));
+
+        m_vboParticleIndices.create();
+        m_vboParticleIndices.bind();
+
+        std::vector<GLuint> indices;
+        indices.reserve(MaxParticleIndices);
+        for (int i = 0; i < ParticleCount; ++i)
+        {
+            const auto base = i * Particle::MaxHistorySize;
+            for (int j = 0; j < Particle::MaxHistorySize - 1; ++j)
+            {
+                indices.push_back(base + j);
+                indices.push_back(base + j + 1);
+            }
+        }
+        Q_ASSERT(indices.size() == MaxParticleIndices);
+        m_vboParticleIndices.allocate(indices.data(), MaxParticleIndices * sizeof(GLuint));
 
         m_programParticles->enableAttributeArray(0); // position
         m_programParticles->enableAttributeArray(1); // color
@@ -308,7 +331,16 @@ void GLWidget::initBuffers()
                                                sizeof(ParticleVertex));
         m_programParticles->setAttributeBuffer(1, GL_FLOAT, offsetof(ParticleVertex, color), 4, sizeof(ParticleVertex));
 
-        m_vboParticles.release();
+        m_vaoParticles.release();
+        m_vboParticleIndices.release();
+        m_vboParticleVerts.release();
+    }
+
+    {
+        QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoParticles);
+        int binding;
+        glGetIntegerv(GL_ELEMENT_ARRAY_BUFFER_BINDING, &binding);
+        Q_ASSERT(binding == m_vboParticleIndices.bufferId());
     }
 }
 

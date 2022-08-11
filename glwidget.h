@@ -52,7 +52,8 @@ private:
     QOpenGLShaderProgram *m_programParticles = nullptr;
     int m_mvpUniformParticles;
     QOpenGLVertexArrayObject m_vaoParticles;
-    QOpenGLBuffer m_vboParticles;
+    QOpenGLBuffer m_vboParticleVerts;
+    QOpenGLBuffer m_vboParticleIndices;
     Camera *m_camera;
     QMatrix4x4 m_model;
     QMatrix4x4 m_projection;
