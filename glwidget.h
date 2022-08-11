@@ -62,6 +62,11 @@ private:
         int historySize = 0;
     };
     std::vector<Particle> m_particles;
+    struct ParticleVertex
+    {
+        QVector3D position;
+        QVector4D color;
+    };
     QPoint m_lastMousePos;
     enum class CameraCommand
     {

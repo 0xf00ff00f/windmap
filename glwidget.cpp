@@ -15,7 +15,7 @@ namespace
 {
 
 // latitude: n/s, -pi/2 to pi/2
-// longitude: e/w, 0 to 2*pi
+// longitude: e/w, -pi to pi
 QVector3D latLonToCartesian(float lat, float lon)
 {
     const auto r = std::cos(lat);
@@ -80,6 +80,8 @@ void GLWidget::paintGL()
     glEnable(GL_CULL_FACE);
     glCullFace(GL_FRONT);
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LINE_SMOOTH);
+    glLineWidth(2.0);
 
     QMatrix4x4 mvp = m_projection * m_camera->viewMatrix() * m_model;
 
@@ -94,11 +96,16 @@ void GLWidget::paintGL()
     }
 
     // particles
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glDepthMask(GL_FALSE);
+
     m_programParticles->bind();
     m_programParticles->setUniformValue(m_mvpUniformParticles, mvp);
 
     m_vboParticles.bind();
-    auto *particleVertices = reinterpret_cast<QVector3D *>(
+    auto *particleVertices = reinterpret_cast<ParticleVertex *>(
         m_vboParticles.mapRange(0, m_particles.size() * sizeof(QVector3D), QOpenGLBuffer::RangeWrite));
     Q_ASSERT(particleVertices);
     int vertexCount = 0;
@@ -110,9 +117,12 @@ void GLWidget::paintGL()
         int head = (particle.historySize + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
         for (int i = 0, count = std::min(particle.historySize, Particle::MaxHistorySize); i < count - 1; ++i)
         {
+            const auto alpha = 1.0f - static_cast<float>(i) / (count - 1);
             int prev = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
-            auto addVertex = [particleVertices, &vertexCount](const auto &p) {
-                particleVertices[vertexCount++] = 1.01f * latLonToCartesian(p.x(), p.y());
+            auto addVertex = [particleVertices, &vertexCount, alpha](const auto &p) {
+                const auto position = 1.01f * latLonToCartesian(p.x(), p.y());
+                const auto color = QVector4D(1, 0, 0, alpha);
+                particleVertices[vertexCount++] = ParticleVertex{position, color};
                 Q_ASSERT(vertexCount < MaxParticleVertices);
             };
             addVertex(particle.history[head]);
@@ -127,6 +137,9 @@ void GLWidget::paintGL()
         QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoParticles);
         glDrawArrays(GL_LINES, 0, vertexCount);
     }
+
+    glDisable(GL_BLEND);
+    glDepthMask(GL_TRUE);
 }
 
 void GLWidget::initializeGL()
@@ -288,10 +301,13 @@ void GLWidget::initBuffers()
 
         m_vboParticles.create();
         m_vboParticles.bind();
-        m_vboParticles.allocate(MaxParticleVertices * sizeof(QVector3D));
+        m_vboParticles.allocate(MaxParticleVertices * sizeof(ParticleVertex));
 
-        m_programParticles->enableAttributeArray(0);                                  // position
-        m_programParticles->setAttributeBuffer(0, GL_FLOAT, 0, 3, sizeof(QVector3D)); // position
+        m_programParticles->enableAttributeArray(0); // position
+        m_programParticles->enableAttributeArray(1); // color
+        m_programParticles->setAttributeBuffer(0, GL_FLOAT, offsetof(ParticleVertex, position), 3,
+                                               sizeof(ParticleVertex));
+        m_programParticles->setAttributeBuffer(1, GL_FLOAT, offsetof(ParticleVertex, color), 4, sizeof(ParticleVertex));
 
         m_vboParticles.release();
     }
@@ -317,7 +333,7 @@ void GLWidget::updateParticles()
         const auto lon = particle.position.y();
         auto position = latLonToCartesian(lat, lon);
 
-        auto speed = particle.speed + 0.01 * windSpeed(lat, lon);
+        auto speed = particle.speed + 0.02 * windSpeed(lat, lon);
 
         // XXX check this
         auto n = position.normalized();
