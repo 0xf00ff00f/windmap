@@ -33,8 +33,18 @@ QVector2D cartesianToLatLon(const QVector3D &position)
 }
 
 constexpr auto ParticleCount = 20000;
-constexpr auto MaxParticleVertices = ParticleCount * 20 * 2;
+constexpr auto MaxParticleVertices = ParticleCount * Particle::MaxHistorySize * 2;
+}
 
+void Particle::reset()
+{
+    auto *rng = QRandomGenerator::global();
+    const auto lat = rng->generateDouble() * M_PI - M_PI / 2;
+    const auto lon = rng->generateDouble() * 2.0 * M_PI - M_PI;
+    position = QVector2D(lat, lon);
+    speed = QVector2D(0, 0);
+    lifetime = rng->bounded(100, 200);
+    historySize = 0;
 }
 
 GLWidget::GLWidget(QWidget *parent)
@@ -106,7 +116,7 @@ void GLWidget::paintGL()
 
     m_vboParticles.bind();
     auto *particleVertices = reinterpret_cast<ParticleVertex *>(
-        m_vboParticles.mapRange(0, m_particles.size() * sizeof(QVector3D), QOpenGLBuffer::RangeWrite));
+        m_vboParticles.mapRange(0, MaxParticleVertices * sizeof(ParticleVertex), QOpenGLBuffer::RangeWrite));
     Q_ASSERT(particleVertices);
     int vertexCount = 0;
 
@@ -198,17 +208,6 @@ void GLWidget::wheelEvent(QWheelEvent *event)
     constexpr auto ZoomSpeed = 0.01f;
     const auto dz = ZoomSpeed * event->angleDelta().y();
     m_camera->zoom(dz);
-}
-
-void GLWidget::Particle::reset()
-{
-    auto *rng = QRandomGenerator::global();
-    const auto lat = rng->generateDouble() * M_PI - M_PI / 2;
-    const auto lon = rng->generateDouble() * 2.0 * M_PI - M_PI;
-    position = QVector2D(lat, lon);
-    speed = QVector2D(0, 0);
-    lifetime = rng->bounded(100, 200);
-    historySize = 0;
 }
 
 void GLWidget::initParticles()

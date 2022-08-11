@@ -11,6 +11,18 @@ class QOpenGLShaderProgram;
 class QOpenGLTexture;
 class QTimer;
 
+struct Particle
+{
+    QVector2D position; // polar
+    QVector2D speed;    // polar
+    int lifetime;
+    void reset();
+
+    static constexpr auto MaxHistorySize = 20;
+    std::array<QVector2D, MaxHistorySize> history;
+    int historySize = 0;
+};
+
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
 public:
@@ -50,17 +62,6 @@ private:
         QVector2D texCoord;
     };
     std::vector<Vertex> m_earthVertices;
-    struct Particle
-    {
-        QVector2D position; // polar
-        QVector2D speed;    // polar
-        int lifetime;
-        void reset();
-
-        static constexpr auto MaxHistorySize = 20;
-        std::array<QVector2D, MaxHistorySize> history;
-        int historySize = 0;
-    };
     std::vector<Particle> m_particles;
     struct ParticleVertex
     {
