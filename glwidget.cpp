@@ -32,6 +32,9 @@ QVector2D cartesianToLatLon(const QVector3D &position)
     return {lat, lon};
 }
 
+constexpr auto ParticleCount = 20000;
+constexpr auto MaxParticleVertices = ParticleCount * 20 * 2;
+
 }
 
 GLWidget::GLWidget(QWidget *parent)
@@ -98,14 +101,31 @@ void GLWidget::paintGL()
     auto *particleVertices = reinterpret_cast<QVector3D *>(
         m_vboParticles.mapRange(0, m_particles.size() * sizeof(QVector3D), QOpenGLBuffer::RangeWrite));
     Q_ASSERT(particleVertices);
-    std::transform(m_particles.begin(), m_particles.end(), particleVertices, [](const Particle &particle) {
-        return latLonToCartesian(particle.position.x(), particle.position.y());
-    });
+    int vertexCount = 0;
+
+    for (const auto &particle : m_particles)
+    {
+        if (particle.historySize < 2)
+            continue;
+        int head = (particle.historySize + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
+        for (int i = 0, count = std::min(particle.historySize, Particle::MaxHistorySize); i < count - 1; ++i)
+        {
+            int prev = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
+            auto addVertex = [particleVertices, &vertexCount](const auto &p) {
+                particleVertices[vertexCount++] = 1.01f * latLonToCartesian(p.x(), p.y());
+                Q_ASSERT(vertexCount < MaxParticleVertices);
+            };
+            addVertex(particle.history[head]);
+            addVertex(particle.history[prev]);
+            head = prev;
+        }
+    }
+
     m_vboParticles.unmap();
     m_vboParticles.release();
     {
         QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoParticles);
-        glDrawArrays(GL_POINTS, 0, m_particles.size());
+        glDrawArrays(GL_LINES, 0, vertexCount);
     }
 }
 
@@ -174,13 +194,13 @@ void GLWidget::Particle::reset()
     const auto lon = rng->generateDouble() * 2.0 * M_PI - M_PI;
     position = QVector2D(lat, lon);
     speed = QVector2D(0, 0);
-    lifetime = rng->bounded(200, 500);
+    lifetime = rng->bounded(100, 200);
+    historySize = 0;
 }
 
 void GLWidget::initParticles()
 {
-    constexpr auto kParticleCount = 20000;
-    m_particles.resize(kParticleCount);
+    m_particles.resize(ParticleCount);
     for (auto &particle : m_particles)
         particle.reset();
 }
@@ -268,7 +288,7 @@ void GLWidget::initBuffers()
 
         m_vboParticles.create();
         m_vboParticles.bind();
-        m_vboParticles.allocate(m_particles.size() * sizeof(QVector3D));
+        m_vboParticles.allocate(MaxParticleVertices * sizeof(QVector3D));
 
         m_programParticles->enableAttributeArray(0);                                  // position
         m_programParticles->setAttributeBuffer(0, GL_FLOAT, 0, 3, sizeof(QVector3D)); // position
@@ -297,7 +317,7 @@ void GLWidget::updateParticles()
         const auto lon = particle.position.y();
         auto position = latLonToCartesian(lat, lon);
 
-        auto speed = particle.speed + 0.02 * windSpeed(lat, lon);
+        auto speed = particle.speed + 0.01 * windSpeed(lat, lon);
 
         // XXX check this
         auto n = position.normalized();
@@ -307,6 +327,9 @@ void GLWidget::updateParticles()
         position = position.normalized();
 
         particle.position = cartesianToLatLon(position);
+
+        particle.history[particle.historySize % Particle::MaxHistorySize] = particle.position;
+        particle.historySize++;
     }
 }
 
@@ -315,7 +338,8 @@ QVector2D GLWidget::windSpeed(float lat, float lon) const
     // Q_ASSERT(lon >= -M_PI && lon < M_PI);
     const float x = static_cast<int>(((lon + M_PI) / (2.0 * M_PI)) * m_windImage.width()) % m_windImage.width();
     // Q_ASSERT(lat >= -M_PI / 2 && lat < M_PI / 2);
-    const float y = static_cast<int>(((lat + M_PI / 2) / M_PI) * m_windImage.height()) % m_windImage.height();
+    const float y = m_windImage.height() - 1 -
+                    static_cast<int>(((lat + M_PI / 2) / M_PI) * m_windImage.height()) % m_windImage.height();
     const auto sample = m_windImage.pixel(x, y);
-    return QVector2D(static_cast<float>(qGreen(sample)) / 255.0 - 0.5, static_cast<float>(qRed(sample)) / 255.0 - 0.5);
+    return QVector2D(static_cast<float>(qRed(sample)) / 255.0 - 0.5, static_cast<float>(qGreen(sample)) / 255.0 - 0.5);
 }
