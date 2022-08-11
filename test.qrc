@@ -3,5 +3,8 @@
         <file>earth.png</file>
         <file>earth.vert</file>
         <file>earth.frag</file>
+        <file>particle.vert</file>
+        <file>particle.frag</file>
+        <file>wind.png</file>
     </qresource>
 </RCC>

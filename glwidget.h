@@ -9,6 +9,7 @@
 class Camera;
 class QOpenGLShaderProgram;
 class QOpenGLTexture;
+class QTimer;
 
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
@@ -25,23 +26,39 @@ protected:
     void wheelEvent(QWheelEvent *event) override;
 
 private:
+    void initParticles();
     void initProgram();
-    void initBuffer();
+    void initBuffers();
+    void updateParticles();
+    QVector2D windSpeed(float lat, float lon) const;
 
-    QOpenGLShaderProgram *m_program = nullptr;
+    QOpenGLShaderProgram *m_programEarth = nullptr;
+    int m_mvpUniformEarth = -1;
     QOpenGLVertexArrayObject m_vaoEarth;
     QOpenGLBuffer m_vboEarth;
     QOpenGLTexture *m_earthTexture = nullptr;
+    QOpenGLShaderProgram *m_programParticles = nullptr;
+    int m_mvpUniformParticles;
+    QOpenGLVertexArrayObject m_vaoParticles;
+    QOpenGLBuffer m_vboParticles;
     Camera *m_camera;
     QMatrix4x4 m_model;
     QMatrix4x4 m_projection;
-    int m_mvpUniform = -1;
     struct Vertex
     {
         QVector3D position;
         QVector2D texCoord;
     };
     std::vector<Vertex> m_earthVertices;
+    struct Particle
+    {
+        QVector2D position; // polar
+        QVector2D speed;    // polar
+        int lifetime;
+
+        void reset();
+    };
+    std::vector<Particle> m_particles;
     QPoint m_lastMousePos;
     enum class CameraCommand
     {
@@ -50,4 +67,6 @@ private:
         Pan
     };
     CameraCommand m_cameraCommand = CameraCommand::None;
+    QTimer *m_timer;
+    QImage m_windImage;
 };
