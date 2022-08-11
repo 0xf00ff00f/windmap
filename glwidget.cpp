@@ -352,9 +352,9 @@ void GLWidget::updateParticles()
 QVector2D GLWidget::windSpeed(float lat, float lon) const
 {
     // Q_ASSERT(lon >= -M_PI && lon < M_PI);
-    const float x = static_cast<int>(((lon + M_PI) / (2.0 * M_PI)) * m_windImage.width()) % m_windImage.width();
+    const auto x = static_cast<int>(((lon + M_PI) / (2.0 * M_PI)) * m_windImage.width()) % m_windImage.width();
     // Q_ASSERT(lat >= -M_PI / 2 && lat < M_PI / 2);
-    const float y = m_windImage.height() - 1 -
+    const auto y = m_windImage.height() - 1 -
                     static_cast<int>(((lat + M_PI / 2) / M_PI) * m_windImage.height()) % m_windImage.height();
     const auto sample = m_windImage.pixel(x, y);
     return QVector2D(static_cast<float>(qRed(sample)) / 255.0 - 0.5, static_cast<float>(qGreen(sample)) / 255.0 - 0.5);
