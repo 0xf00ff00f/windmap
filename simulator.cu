@@ -8,6 +8,21 @@
 #include <cstdio>
 #include <cstdlib>
 
+struct Vertex
+{
+    glm::vec3 position;
+    glm::vec4 color;
+};
+
+void bailOnError(cudaError_t error)
+{
+    if (error != cudaSuccess)
+    {
+        fprintf(stderr, "CUDA error (%d): %s\n", error, cudaGetErrorString(error));
+        abort();
+    }
+}
+
 // latitude: n/s, -pi/2 to pi/2
 // longitude: e/w, -pi to pi
 __device__ glm::vec3 latLonToCartesian(float lat, float lon)
@@ -63,25 +78,60 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
     }
 }
 
+__global__ void updateVertices(Particle *particles, int particleCount, Vertex *vertices)
+{
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < particleCount; i += stride)
+    {
+        const auto &particle = particles[i];
+        Vertex *v = &vertices[i * Particle::MaxHistorySize];
+        int historySize = glm::min(particle.historySize, Particle::MaxHistorySize);
+        int head = particle.historySize % Particle::MaxHistorySize;
+        for (int i = 0; i < historySize; ++i)
+        {
+            head = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
+            const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
+            const auto &p = particle.history[head];
+            const auto position = 1.01f * latLonToCartesian(p.x, p.y);
+            const auto color = glm::vec4(1, 0, 0, alpha);
+            *v++ = Vertex{position, color};
+        }
+        for (int i = historySize; i < Particle::MaxHistorySize; ++i)
+        {
+            const auto &p = particle.history[head];
+            const auto position = 1.01f * latLonToCartesian(p.x, p.y);
+            const auto color = glm::vec4(1, 0, 0, 0);
+            *v++ = Vertex{position, color};
+        }
+    }
+}
+
 void Simulator::update()
 {
     constexpr auto BlockSize = 256;
     constexpr auto NumBlocks = (ParticleCount + BlockSize - 1) / BlockSize;
     updateParticle<<<NumBlocks, BlockSize>>>(m_particles, ParticleCount, m_windMap, m_windMapWidth, m_windMapHeight);
     cudaDeviceSynchronize();
+
+    bailOnError(cudaGraphicsMapResources(1, &m_vboResource, 0));
+
+    Vertex *vertices;
+    size_t numBytes;
+    bailOnError(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void **>(&vertices), &numBytes, m_vboResource));
+
+    updateVertices<<<NumBlocks, BlockSize>>>(m_particles, ParticleCount, vertices);
+    cudaDeviceSynchronize();
+
+    bailOnError(cudaGraphicsUnmapResources(1, &m_vboResource, 0));
 }
 
-Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeight)
+Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeight, GLuint vbo)
     : m_windMapWidth(windMapWidth)
     , m_windMapHeight(windMapHeight)
 {
     // initialize particles
-    auto rv = cudaMallocManaged(&m_particles, ParticleCount * sizeof(Particle));
-    if (rv != cudaSuccess)
-    {
-        fprintf(stderr, "cudaMallocManaged failed (%d): %s\n", rv, cudaGetErrorString(rv));
-        abort();
-    }
+    bailOnError(cudaMallocManaged(&m_particles, ParticleCount * sizeof(Particle)));
 
     std::mt19937 eng;
     std::uniform_real_distribution<> dist(0, 1);
@@ -93,8 +143,11 @@ Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeig
     });
 
     // initialize wind map
-    cudaMallocManaged(&m_windMap, windMapWidth * windMapHeight * sizeof(glm::vec2));
+    bailOnError(cudaMallocManaged(&m_windMap, windMapWidth * windMapHeight * sizeof(glm::vec2)));
     std::copy(windMap, windMap + windMapWidth * windMapHeight, m_windMap);
+
+    // initialize VBO
+    bailOnError(cudaGraphicsGLRegisterBuffer(&m_vboResource, vbo, cudaGraphicsMapFlagsWriteDiscard));
 }
 
 Simulator::~Simulator()

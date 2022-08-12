@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cuda.h>
+#include <cuda_gl_interop.h>
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
 
@@ -18,7 +19,7 @@ struct Particle
 class Simulator
 {
 public:
-    Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeight);
+    Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeight, GLuint vbo);
     ~Simulator();
 
     Simulator(const Simulator &) = delete;
@@ -36,4 +37,5 @@ private:
     glm::vec2 *m_windMap = nullptr;
     int m_windMapWidth;
     int m_windMapHeight;
+    cudaGraphicsResource *m_vboResource = nullptr;
 };

@@ -117,35 +117,13 @@ void GLWidget::paintGL()
     m_programParticles->bind();
     m_programParticles->setUniformValue(m_mvpUniformParticles, mvp);
 
+#if !defined(CUDA_PARTICLES)
     m_vboParticleVerts.bind();
     auto *particleVertices = reinterpret_cast<ParticleVertex *>(
         m_vboParticleVerts.mapRange(0, MaxParticleVertices * sizeof(ParticleVertex), QOpenGLBuffer::RangeWrite));
     Q_ASSERT(particleVertices);
     int vertexCount = 0;
 
-#if defined(CUDA_PARTICLES)
-    std::for_each(m_simulator->m_particles, m_simulator->m_particles + ParticleCount,
-                  [&particleVertices, &vertexCount](const Particle &particle) {
-                      int historySize = std::min(particle.historySize, Particle::MaxHistorySize);
-                      int head = particle.historySize % Particle::MaxHistorySize;
-                      for (int i = 0; i < historySize; ++i)
-                      {
-                          head = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
-                          const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
-                          const auto &p = particle.history[head];
-                          const auto position = 1.01f * latLonToCartesian(p.x, p.y);
-                          const auto color = QVector4D(1, 0, 0, alpha);
-                          particleVertices[vertexCount++] = ParticleVertex{position, color};
-                      }
-                      for (int i = historySize; i < Particle::MaxHistorySize; ++i)
-                      {
-                          const auto &p = particle.history[head];
-                          const auto position = 1.01f * latLonToCartesian(p.x, p.y);
-                          const auto color = QVector4D(1, 0, 0, 0);
-                          particleVertices[vertexCount++] = ParticleVertex{position, color};
-                      }
-                  });
-#else
     for (const auto &particle : m_particles)
     {
         int historySize = std::min(particle.historySize, Particle::MaxHistorySize);
@@ -167,11 +145,12 @@ void GLWidget::paintGL()
             particleVertices[vertexCount++] = ParticleVertex{position, color};
         }
     }
-#endif
     Q_ASSERT(vertexCount == MaxParticleVertices);
 
     m_vboParticleVerts.unmap();
     m_vboParticleVerts.release();
+#endif
+
     {
         QOpenGLVertexArrayObject::Binder vaoBinder(&m_vaoParticles);
         glDrawElements(GL_LINES, MaxParticleIndices, GL_UNSIGNED_INT, nullptr);
@@ -185,9 +164,9 @@ void GLWidget::initializeGL()
 {
     initializeOpenGLFunctions();
 
-    initParticles();
     initProgram();
     initBuffers();
+    initParticles();
 }
 
 void GLWidget::mousePressEvent(QMouseEvent *event)
@@ -255,7 +234,8 @@ void GLWidget::initParticles()
         }
     }
 
-    m_simulator.reset(new Simulator(windMap.data(), m_windImage.width(), m_windImage.height()));
+    m_simulator.reset(
+        new Simulator(windMap.data(), m_windImage.width(), m_windImage.height(), m_vboParticleVerts.bufferId()));
 #else
     m_particles.resize(ParticleCount);
     for (auto &particle : m_particles)
