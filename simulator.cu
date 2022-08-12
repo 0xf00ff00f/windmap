@@ -10,7 +10,7 @@
 
 // latitude: n/s, -pi/2 to pi/2
 // longitude: e/w, -pi to pi
-glm::vec3 latLonToCartesian(float lat, float lon)
+__device__ glm::vec3 latLonToCartesian(float lat, float lon)
 {
     const auto r = glm::cos(lat);
     const auto x = r * glm::cos(lon);
@@ -19,33 +19,35 @@ glm::vec3 latLonToCartesian(float lat, float lon)
     return {x, y, z};
 }
 
-glm::vec2 cartesianToLatLon(const glm::vec3 &position)
+__device__ glm::vec2 cartesianToLatLon(const glm::vec3 &position)
 {
     float lon = glm::atan(position.y, position.x);
     float lat = glm::asin(position.z);
     return {lat, lon};
 }
 
-glm::vec2 Simulator::windSpeed(float lat, float lon) const
+__global__ void updateParticle(Particle *particles, int particleCount, glm::vec2 *windMap, int windMapWidth,
+                               int windMapHeight)
 {
-    // Q_ASSERT(lon >= -M_PI && lon < M_PI);
-    const auto x =
-        static_cast<int>(((lon + glm::pi<float>()) / (2.0f * glm::pi<float>())) * m_windMapWidth) % m_windMapWidth;
-    // Q_ASSERT(lat >= -M_PI / 2 && lat < M_PI / 2);
-    const auto y =
-        m_windMapHeight - 1 -
-        static_cast<int>(((lat + glm::half_pi<float>()) / glm::pi<float>()) * m_windMapHeight) % m_windMapHeight;
-    return m_windMap[y * m_windMapWidth + x];
-}
+    int index = blockIdx.x * blockDim.x + threadIdx.x;
+    int stride = blockDim.x * gridDim.x;
+    for (int i = index; i < particleCount; i += stride)
+    {
+        auto &particle = particles[i];
 
-void Simulator::update()
-{
-    std::for_each(m_particles, m_particles + ParticleCount, [this](auto &particle) {
         const auto lat = particle.position.x;
         const auto lon = particle.position.y;
         auto position = latLonToCartesian(lat, lon);
 
-        auto speed = particle.speed + 0.02f * windSpeed(lat, lon);
+        const auto windSpeed = [=] {
+            const auto x =
+                static_cast<int>(((lon + glm::pi<float>()) / (2.0f * glm::pi<float>())) * windMapWidth) % windMapWidth;
+            const auto y =
+                windMapHeight - 1 -
+                static_cast<int>(((lat + glm::half_pi<float>()) / glm::pi<float>()) * windMapHeight) % windMapHeight;
+            return windMap[y * windMapWidth + x];
+        }();
+        auto speed = particle.speed + 0.02f * windSpeed;
 
         // XXX check this
         auto n = glm::normalize(position);
@@ -58,7 +60,15 @@ void Simulator::update()
 
         particle.history[particle.historySize % Particle::MaxHistorySize] = particle.position;
         particle.historySize++;
-    });
+    }
+}
+
+void Simulator::update()
+{
+    constexpr auto BlockSize = 256;
+    constexpr auto NumBlocks = (ParticleCount + BlockSize - 1) / BlockSize;
+    updateParticle<<<NumBlocks, BlockSize>>>(m_particles, ParticleCount, m_windMap, m_windMapWidth, m_windMapHeight);
+    cudaDeviceSynchronize();
 }
 
 Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeight)
