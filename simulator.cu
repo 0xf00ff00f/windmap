@@ -50,6 +50,14 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
     {
         auto &particle = particles[i];
 
+        if (particle.time > particle.period)
+        {
+            particle.position = particle.initialPosition;
+            particle.speed = glm::vec2(0, 0);
+            particle.historySize = 0;
+            particle.time = 0;
+        }
+
         const auto lat = particle.position.x;
         const auto lon = particle.position.y;
         auto position = latLonToCartesian(lat, lon);
@@ -74,7 +82,9 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
         particle.position = cartesianToLatLon(position);
 
         particle.history[particle.historySize % Particle::MaxHistorySize] = particle.position;
-        particle.historySize++;
+        ++particle.historySize;
+
+        ++particle.time;
     }
 }
 
@@ -135,11 +145,14 @@ Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeig
 
     std::mt19937 eng;
     std::uniform_real_distribution<> dist(0, 1);
+    std::uniform_int_distribution<> period_dist(100, 200);
     std::for_each(m_particles, m_particles + ParticleCount, [&](Particle &particle) {
         const auto lat = dist(eng) * glm::pi<float>() - glm::half_pi<float>();
         const auto lon = dist(eng) * 2.0f * glm::pi<float>() - glm::pi<float>();
-        particle.position = glm::vec2(lat, lon);
+        particle.initialPosition = particle.position = glm::vec2(lat, lon);
         particle.speed = glm::vec2(0, 0);
+        particle.period = period_dist(eng);
+        particle.time = 0;
     });
 
     // initialize wind map
