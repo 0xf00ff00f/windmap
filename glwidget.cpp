@@ -37,6 +37,7 @@ constexpr auto MaxParticleVertices = ParticleCount * Particle::MaxHistorySize;
 constexpr auto MaxParticleIndices = ParticleCount * 2 * (Particle::MaxHistorySize - 1);
 }
 
+#if !defined(CUDA_PARTICLES)
 void Particle::reset()
 {
     auto *rng = QRandomGenerator::global();
@@ -47,6 +48,7 @@ void Particle::reset()
     lifetime = rng->bounded(100, 200);
     historySize = 0;
 }
+#endif
 
 GLWidget::GLWidget(QWidget *parent)
     : QOpenGLWidget(parent)
@@ -57,8 +59,6 @@ GLWidget::GLWidget(QWidget *parent)
 {
     Q_ASSERT(m_model.isIdentity());
     Q_ASSERT(m_projection.isIdentity());
-
-    initParticles();
 
     connect(m_camera, &Camera::viewMatrixChanged, this, [this] { update(); });
 
@@ -123,6 +123,29 @@ void GLWidget::paintGL()
     Q_ASSERT(particleVertices);
     int vertexCount = 0;
 
+#if defined(CUDA_PARTICLES)
+    std::for_each(m_simulator->m_particles, m_simulator->m_particles + ParticleCount,
+                  [&particleVertices, &vertexCount](const Particle &particle) {
+                      int historySize = std::min(particle.historySize, Particle::MaxHistorySize);
+                      int head = particle.historySize % Particle::MaxHistorySize;
+                      for (int i = 0; i < historySize; ++i)
+                      {
+                          head = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
+                          const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
+                          const auto &p = particle.history[head];
+                          const auto position = 1.01f * latLonToCartesian(p.x, p.y);
+                          const auto color = QVector4D(1, 0, 0, alpha);
+                          particleVertices[vertexCount++] = ParticleVertex{position, color};
+                      }
+                      for (int i = historySize; i < Particle::MaxHistorySize; ++i)
+                      {
+                          const auto &p = particle.history[head];
+                          const auto position = 1.01f * latLonToCartesian(p.x, p.y);
+                          const auto color = QVector4D(1, 0, 0, 0);
+                          particleVertices[vertexCount++] = ParticleVertex{position, color};
+                      }
+                  });
+#else
     for (const auto &particle : m_particles)
     {
         int historySize = std::min(particle.historySize, Particle::MaxHistorySize);
@@ -144,6 +167,7 @@ void GLWidget::paintGL()
             particleVertices[vertexCount++] = ParticleVertex{position, color};
         }
     }
+#endif
     Q_ASSERT(vertexCount == MaxParticleVertices);
 
     m_vboParticleVerts.unmap();
@@ -161,6 +185,7 @@ void GLWidget::initializeGL()
 {
     initializeOpenGLFunctions();
 
+    initParticles();
     initProgram();
     initBuffers();
 }
@@ -217,9 +242,25 @@ void GLWidget::wheelEvent(QWheelEvent *event)
 
 void GLWidget::initParticles()
 {
+#if defined(CUDA_PARTICLES)
+    std::vector<glm::vec2> windMap;
+    windMap.reserve(m_windImage.width() * m_windImage.height());
+    for (int y = 0; y < m_windImage.height(); ++y)
+    {
+        for (int x = 0; x < m_windImage.width(); ++x)
+        {
+            const auto sample = m_windImage.pixel(x, y);
+            windMap.push_back(glm::vec2(static_cast<float>(qRed(sample)) / 255.0 - 0.5,
+                                        static_cast<float>(qGreen(sample)) / 255.0 - 0.5));
+        }
+    }
+
+    m_simulator.reset(new Simulator(windMap.data(), m_windImage.width(), m_windImage.height()));
+#else
     m_particles.resize(ParticleCount);
     for (auto &particle : m_particles)
         particle.reset();
+#endif
 }
 
 void GLWidget::initProgram()
@@ -352,6 +393,9 @@ void GLWidget::resizeGL(int w, int h)
 
 void GLWidget::updateParticles()
 {
+#if defined(CUDA_PARTICLES)
+    m_simulator->update();
+#else
     for (auto &particle : m_particles)
     {
         if (--particle.lifetime < 0)
@@ -378,6 +422,7 @@ void GLWidget::updateParticles()
         particle.history[particle.historySize % Particle::MaxHistorySize] = particle.position;
         particle.historySize++;
     }
+#endif
 }
 
 QVector2D GLWidget::windSpeed(float lat, float lon) const

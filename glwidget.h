@@ -1,5 +1,11 @@
 #pragma once
 
+#define CUDA_PARTICLES
+
+#if defined(CUDA_PARTICLES)
+#include "simulator.h"
+#endif
+
 #include <QOpenGLWidget>
 #include <QOpenGLFunctions>
 #include <QOpenGLVertexArrayObject>
@@ -11,6 +17,7 @@ class QOpenGLShaderProgram;
 class QOpenGLTexture;
 class QTimer;
 
+#if !defined(CUDA_PARTICLES)
 struct Particle
 {
     QVector2D position; // polar
@@ -22,6 +29,7 @@ struct Particle
     std::array<QVector2D, MaxHistorySize> history;
     int historySize = 0;
 };
+#endif
 
 class GLWidget : public QOpenGLWidget, protected QOpenGLFunctions
 {
@@ -63,7 +71,11 @@ private:
         QVector2D texCoord;
     };
     std::vector<Vertex> m_earthVertices;
+#if defined(CUDA_PARTICLES)
+    std::unique_ptr<Simulator> m_simulator;
+#else
     std::vector<Particle> m_particles;
+#endif
     struct ParticleVertex
     {
         QVector3D position;
