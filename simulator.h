@@ -5,6 +5,8 @@
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
 
+static constexpr auto ParticleCount = 20000;
+
 struct Particle
 {
     glm::vec2 initialPosition;
@@ -29,13 +31,10 @@ public:
 
     void update();
 
-    static constexpr auto ParticleCount = 20000;
-
-    Particle *m_particles = nullptr;
-
 private:
     glm::vec2 windSpeed(float lat, float lon) const;
 
+    Particle *m_particles = nullptr;
     glm::vec2 *m_windMap = nullptr;
     int m_windMapWidth;
     int m_windMapHeight;

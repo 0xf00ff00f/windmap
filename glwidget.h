@@ -4,6 +4,8 @@
 
 #if defined(CUDA_PARTICLES)
 #include "simulator.h"
+#else
+static constexpr auto ParticleCount = 20000;
 #endif
 
 #include <QOpenGLWidget>

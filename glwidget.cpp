@@ -32,7 +32,6 @@ QVector2D cartesianToLatLon(const QVector3D &position)
     return {lat, lon};
 }
 
-constexpr auto ParticleCount = 20000;
 constexpr auto MaxParticleVertices = ParticleCount * Particle::MaxHistorySize;
 constexpr auto MaxParticleIndices = ParticleCount * 2 * (Particle::MaxHistorySize - 1);
 }
