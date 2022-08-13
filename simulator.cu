@@ -53,7 +53,6 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
         if (particle.time > particle.period)
         {
             particle.position = particle.initialPosition;
-            particle.speed = glm::vec2(0, 0);
             particle.historySize = 0;
             particle.time = 0;
         }
@@ -70,7 +69,7 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
                 static_cast<int>(((lat + glm::half_pi<float>()) / glm::pi<float>()) * windMapHeight) % windMapHeight;
             return windMap[y * windMapWidth + x];
         }();
-        auto speed = particle.speed + 0.02f * windSpeed;
+        const auto speed = 0.02f * windSpeed;
 
         // XXX check this
         auto n = glm::normalize(position);
@@ -150,7 +149,6 @@ Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeig
         const auto lat = dist(eng) * glm::pi<float>() - glm::half_pi<float>();
         const auto lon = dist(eng) * 2.0f * glm::pi<float>() - glm::pi<float>();
         particle.initialPosition = particle.position = glm::vec2(lat, lon);
-        particle.speed = glm::vec2(0, 0);
         particle.period = period_dist(eng);
         particle.time = 0;
     });

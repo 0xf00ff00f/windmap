@@ -11,7 +11,6 @@ struct Particle
 {
     glm::vec2 initialPosition;
     glm::vec2 position; // polar
-    glm::vec2 speed;    // polar
     int time, period;
 
     static constexpr auto MaxHistorySize = 40;

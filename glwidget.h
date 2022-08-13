@@ -23,7 +23,6 @@ class QTimer;
 struct Particle
 {
     QVector2D position; // polar
-    QVector2D speed;    // polar
     int lifetime;
     void reset();
 

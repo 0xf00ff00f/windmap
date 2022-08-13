@@ -43,7 +43,6 @@ void Particle::reset()
     const auto lat = rng->generateDouble() * M_PI - M_PI / 2;
     const auto lon = rng->generateDouble() * 2.0 * M_PI - M_PI;
     position = QVector2D(lat, lon);
-    speed = QVector2D(0, 0);
     lifetime = rng->bounded(100, 200);
     historySize = 0;
 }
@@ -387,7 +386,7 @@ void GLWidget::updateParticles()
         const auto lon = particle.position.y();
         auto position = latLonToCartesian(lat, lon);
 
-        auto speed = particle.speed + 0.02 * windSpeed(lat, lon);
+        const auto speed = 0.02 * windSpeed(lat, lon);
 
         // XXX check this
         auto n = position.normalized();
