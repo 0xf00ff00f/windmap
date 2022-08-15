@@ -15,7 +15,7 @@ struct Particle
 
     static constexpr auto MaxHistorySize = 40;
 
-    glm::vec2 history[MaxHistorySize];
+    glm::vec3 history[MaxHistorySize];
     int historySize = 0;
 };
 

@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+namespace {
+
 struct Vertex
 {
     glm::vec3 position;
@@ -22,6 +24,10 @@ void bailOnError(cudaError_t error)
         abort();
     }
 }
+
+}
+
+__device__ constexpr auto TrailColor = glm::vec3(1, 0, 0);
 
 // latitude: n/s, -pi/2 to pi/2
 // longitude: e/w, -pi to pi
@@ -80,7 +86,7 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
 
         particle.position = cartesianToLatLon(position);
 
-        particle.history[particle.historySize % Particle::MaxHistorySize] = particle.position;
+        particle.history[particle.historySize % Particle::MaxHistorySize] = position;
         ++particle.historySize;
 
         ++particle.time;
@@ -101,17 +107,17 @@ __global__ void updateVertices(Particle *particles, int particleCount, Vertex *v
         {
             head = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
             const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
-            const auto &p = particle.history[head];
-            const auto position = 1.01f * latLonToCartesian(p.x, p.y);
-            const auto color = glm::vec4(1, 0, 0, alpha);
+            const auto position = 1.01f * particle.history[head];
+            const auto color = glm::vec4(TrailColor, alpha);
             *v++ = Vertex{position, color};
         }
-        for (int i = historySize; i < Particle::MaxHistorySize; ++i)
+        if (historySize < Particle::MaxHistorySize)
         {
-            const auto &p = particle.history[head];
-            const auto position = 1.01f * latLonToCartesian(p.x, p.y);
-            const auto color = glm::vec4(1, 0, 0, 0);
-            *v++ = Vertex{position, color};
+            const auto position = 1.01f * particle.history[head];
+            const auto color = glm::vec4(TrailColor, 0);
+            const auto vertex = Vertex{position, color};
+            for (int i = historySize; i < Particle::MaxHistorySize; ++i)
+                *v++ = vertex;
         }
     }
 }
@@ -120,6 +126,7 @@ void Simulator::update()
 {
     constexpr auto BlockSize = 256;
     constexpr auto NumBlocks = (ParticleCount + BlockSize - 1) / BlockSize;
+
     updateParticle<<<NumBlocks, BlockSize>>>(m_particles, ParticleCount, m_windMap, m_windMapWidth, m_windMapHeight);
     cudaDeviceSynchronize();
 
