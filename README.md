@@ -2,11 +2,11 @@
 
 An animated 3D wind map using CUDA and OpenGL.
 
-Based on the explanation in [this article](https://blog.mapbox.com/how-i-built-a-wind-map-with-webgl-b63022b5537f). The wind data image (wind.png) comes from that article.
+Based on the explanation in [this article](https://blog.mapbox.com/how-i-built-a-wind-map-with-webgl-b63022b5537f). The [wind data image](/wind.png?raw=true) was taken from that article.
 
 ## Building
 
-You need Qt6 and the NVIDIA CUDA development toolkit.
+You need Qt6, GLM and the NVIDIA CUDA development toolkit.
 
 ```
 $ cmake -B build -S .
