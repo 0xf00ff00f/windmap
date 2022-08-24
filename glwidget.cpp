@@ -174,8 +174,10 @@ void GLWidget::mousePressEvent(QMouseEvent *event)
         switch (event->button())
         {
         case Qt::LeftButton:
+#if 0
             return CameraCommand::Pan;
         case Qt::RightButton:
+#endif
             return CameraCommand::Rotate;
         default:
             return CameraCommand::None;

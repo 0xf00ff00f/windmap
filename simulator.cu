@@ -5,8 +5,6 @@
 #include <algorithm>
 #include <random>
 #include <cassert>
-#include <cstdio>
-#include <cstdlib>
 
 namespace {
 
@@ -15,16 +13,6 @@ struct Vertex
     glm::vec3 position;
     glm::vec4 color;
 };
-
-void bailOnError(cudaError_t error)
-{
-    if (error != cudaSuccess)
-    {
-        fprintf(stderr, "CUDA error (%d): %s\n", error, cudaGetErrorString(error));
-        abort();
-    }
-}
-
 }
 
 __device__ constexpr auto TrailColor = glm::vec3(1, 0, 0);
@@ -127,19 +115,20 @@ void Simulator::update()
     constexpr auto BlockSize = 256;
     constexpr auto NumBlocks = (ParticleCount + BlockSize - 1) / BlockSize;
 
-    updateParticle<<<NumBlocks, BlockSize>>>(m_particles, ParticleCount, m_windMap, m_windMapWidth, m_windMapHeight);
+    updateParticle<<<NumBlocks, BlockSize>>>(m_particles.data(), ParticleCount, m_windMap.data(), m_windMapWidth,
+                                             m_windMapHeight);
     cudaDeviceSynchronize();
 
-    bailOnError(cudaGraphicsMapResources(1, &m_vboResource, 0));
+    CUDA_CHECK(cudaGraphicsMapResources(1, &m_vboResource, 0));
 
     Vertex *vertices;
     size_t numBytes;
-    bailOnError(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void **>(&vertices), &numBytes, m_vboResource));
+    CUDA_CHECK(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void **>(&vertices), &numBytes, m_vboResource));
 
-    updateVertices<<<NumBlocks, BlockSize>>>(m_particles, ParticleCount, vertices);
+    updateVertices<<<NumBlocks, BlockSize>>>(m_particles.data(), ParticleCount, vertices);
     cudaDeviceSynchronize();
 
-    bailOnError(cudaGraphicsUnmapResources(1, &m_vboResource, 0));
+    CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_vboResource, 0));
 }
 
 Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeight, GLuint vbo)
@@ -147,29 +136,26 @@ Simulator::Simulator(const glm::vec2 *windMap, int windMapWidth, int windMapHeig
     , m_windMapHeight(windMapHeight)
 {
     // initialize particles
-    bailOnError(cudaMallocManaged(&m_particles, ParticleCount * sizeof(Particle)));
+    m_particles.resize(ParticleCount);
 
     std::mt19937 eng;
     std::uniform_real_distribution<> dist(0, 1);
     std::uniform_int_distribution<> period_dist(100, 200);
-    std::for_each(m_particles, m_particles + ParticleCount, [&](Particle &particle) {
+    for (auto &particle : m_particles)
+    {
         const auto lat = dist(eng) * glm::pi<float>() - glm::half_pi<float>();
         const auto lon = dist(eng) * 2.0f * glm::pi<float>() - glm::pi<float>();
         particle.initialPosition = particle.position = glm::vec2(lat, lon);
         particle.period = period_dist(eng);
         particle.time = 0;
-    });
+    };
 
     // initialize wind map
-    bailOnError(cudaMallocManaged(&m_windMap, windMapWidth * windMapHeight * sizeof(glm::vec2)));
-    std::copy(windMap, windMap + windMapWidth * windMapHeight, m_windMap);
+    m_windMap.resize(windMapWidth * windMapHeight);
+    std::copy(windMap, windMap + windMapWidth * windMapHeight, m_windMap.begin());
 
     // initialize VBO
-    bailOnError(cudaGraphicsGLRegisterBuffer(&m_vboResource, vbo, cudaGraphicsMapFlagsWriteDiscard));
+    CUDA_CHECK(cudaGraphicsGLRegisterBuffer(&m_vboResource, vbo, cudaGraphicsMapFlagsWriteDiscard));
 }
 
-Simulator::~Simulator()
-{
-    cudaFree(m_windMap);
-    cudaFree(m_particles);
-}
+Simulator::~Simulator() = default;

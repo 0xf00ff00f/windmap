@@ -1,5 +1,7 @@
 #pragma once
 
+#include "cudautils.h"
+
 #include <cuda.h>
 #include <cuda_gl_interop.h>
 #define GLM_FORCE_CUDA
@@ -31,10 +33,8 @@ public:
     void update();
 
 private:
-    glm::vec2 windSpeed(float lat, float lon) const;
-
-    Particle *m_particles = nullptr;
-    glm::vec2 *m_windMap = nullptr;
+    CudaUtils::CuVector<Particle> m_particles;
+    CudaUtils::CuVector<glm::vec2> m_windMap;
     int m_windMapWidth;
     int m_windMapHeight;
     cudaGraphicsResource *m_vboResource = nullptr;
