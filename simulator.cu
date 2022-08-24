@@ -6,7 +6,8 @@
 #include <random>
 #include <cassert>
 
-namespace {
+namespace
+{
 
 struct Vertex
 {
@@ -36,13 +37,15 @@ __device__ glm::vec2 cartesianToLatLon(const glm::vec3 &position)
 }
 
 __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2 *windMap, int windMapWidth,
-                               int windMapHeight)
+                               int windMapHeight, Vertex *vertices)
 {
     int index = blockIdx.x * blockDim.x + threadIdx.x;
     int stride = blockDim.x * gridDim.x;
     for (int i = index; i < particleCount; i += stride)
     {
         auto &particle = particles[i];
+
+        // update particle
 
         if (particle.time > particle.period)
         {
@@ -73,22 +76,13 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
         position = glm::normalize(position);
 
         particle.position = cartesianToLatLon(position);
-
         particle.history[particle.historySize % Particle::MaxHistorySize] = position;
         ++particle.historySize;
-
         ++particle.time;
-    }
-}
 
-__global__ void updateVertices(Particle *particles, int particleCount, Vertex *vertices)
-{
-    int index = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride = blockDim.x * gridDim.x;
-    for (int i = index; i < particleCount; i += stride)
-    {
-        const auto &particle = particles[i];
-        Vertex *v = &vertices[i * Particle::MaxHistorySize];
+        // update trail vertices
+
+        Vertex *p = &vertices[i * Particle::MaxHistorySize];
         int historySize = glm::min(particle.historySize, Particle::MaxHistorySize);
         int head = particle.historySize % Particle::MaxHistorySize;
         for (int i = 0; i < historySize; ++i)
@@ -97,7 +91,7 @@ __global__ void updateVertices(Particle *particles, int particleCount, Vertex *v
             const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
             const auto position = 1.01f * particle.history[head];
             const auto color = glm::vec4(TrailColor, alpha);
-            *v++ = Vertex{position, color};
+            *p++ = Vertex{position, color};
         }
         if (historySize < Particle::MaxHistorySize)
         {
@@ -105,7 +99,7 @@ __global__ void updateVertices(Particle *particles, int particleCount, Vertex *v
             const auto color = glm::vec4(TrailColor, 0);
             const auto vertex = Vertex{position, color};
             for (int i = historySize; i < Particle::MaxHistorySize; ++i)
-                *v++ = vertex;
+                *p++ = vertex;
         }
     }
 }
@@ -115,17 +109,13 @@ void Simulator::update()
     constexpr auto BlockSize = 256;
     constexpr auto NumBlocks = (ParticleCount + BlockSize - 1) / BlockSize;
 
-    updateParticle<<<NumBlocks, BlockSize>>>(m_particles.data(), ParticleCount, m_windMap.data(), m_windMapWidth,
-                                             m_windMapHeight);
-    cudaDeviceSynchronize();
-
     CUDA_CHECK(cudaGraphicsMapResources(1, &m_vboResource, 0));
-
     Vertex *vertices;
     size_t numBytes;
     CUDA_CHECK(cudaGraphicsResourceGetMappedPointer(reinterpret_cast<void **>(&vertices), &numBytes, m_vboResource));
 
-    updateVertices<<<NumBlocks, BlockSize>>>(m_particles.data(), ParticleCount, vertices);
+    updateParticle<<<NumBlocks, BlockSize>>>(m_particles.data(), ParticleCount, m_windMap.data(), m_windMapWidth,
+                                             m_windMapHeight, vertices);
     cudaDeviceSynchronize();
 
     CUDA_CHECK(cudaGraphicsUnmapResources(1, &m_vboResource, 0));
