@@ -6,18 +6,22 @@
 #include <cuda_gl_interop.h>
 #define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
+#include <tuple>
+#include <array>
 
-static constexpr auto ParticleCount = 20000;
+static constexpr auto ParticleCount = 80000;
 
 struct Particle
 {
     glm::vec2 initialPosition;
     glm::vec2 position; // polar
     int time, period;
-
-    static constexpr auto MaxHistorySize = 40;
-
-    glm::vec3 history[MaxHistorySize];
+    static constexpr auto MaxHistorySize = 60;
+    struct PositionSpeed {
+        glm::vec3 position;
+        float speed;
+    };
+    PositionSpeed history[MaxHistorySize];
     int historySize = 0;
 };
 

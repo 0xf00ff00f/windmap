@@ -1,4 +1,4 @@
-![windmap](/screenshot.png?raw=true)
+![windmap](/screenshot.jpg?raw=true)
 
 An animated 3D wind map using CUDA and OpenGL.
 

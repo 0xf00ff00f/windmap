@@ -16,7 +16,7 @@ struct Vertex
 };
 }
 
-__device__ constexpr auto TrailColor = glm::vec3(1, 0, 0);
+__device__ constexpr auto TrailColor = glm::vec3(0, 1, 1);
 
 // latitude: n/s, -pi/2 to pi/2
 // longitude: e/w, -pi to pi
@@ -76,7 +76,7 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
         position = glm::normalize(position);
 
         particle.position = cartesianToLatLon(position);
-        particle.history[particle.historySize % Particle::MaxHistorySize] = position;
+        particle.history[particle.historySize % Particle::MaxHistorySize] = { position, glm::length(windSpeed) };
         ++particle.historySize;
         ++particle.time;
 
@@ -85,17 +85,19 @@ __global__ void updateParticle(Particle *particles, int particleCount, glm::vec2
         Vertex *p = &vertices[i * Particle::MaxHistorySize];
         int historySize = glm::min(particle.historySize, Particle::MaxHistorySize);
         int head = particle.historySize % Particle::MaxHistorySize;
+        constexpr auto Distance = 1.005f;
         for (int i = 0; i < historySize; ++i)
         {
             head = (head + (Particle::MaxHistorySize - 1)) % Particle::MaxHistorySize;
-            const auto alpha = 1.0f - static_cast<float>(i) / (historySize - 1);
-            const auto position = 1.01f * particle.history[head];
+            const auto speed = particle.history[head].speed;
+            const auto position = Distance * particle.history[head].position;
+            const auto alpha = speed * (1.0f - static_cast<float>(i) / (historySize - 1));
             const auto color = glm::vec4(TrailColor, alpha);
             *p++ = Vertex{position, color};
         }
         if (historySize < Particle::MaxHistorySize)
         {
-            const auto position = 1.01f * particle.history[head];
+            const auto position = Distance * particle.history[head].position;
             const auto color = glm::vec4(TrailColor, 0);
             const auto vertex = Vertex{position, color};
             for (int i = historySize; i < Particle::MaxHistorySize; ++i)
